@@ -2,7 +2,7 @@ module Main exposing (..)
 
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (on)
+import Html.Events exposing (..)
 import Json.Decode as Decode
 import Mouse exposing (Position)
 import Number.Bounded as Bounded exposing (Bounded)
@@ -52,9 +52,23 @@ type alias Story =
     }
 
 
+type Axis
+    = X
+    | Y
+
+
+type Fields
+    = ProjectId
+    | Label
+    | Token
+
+
 type alias Model =
     { stories : List Story
     , drag : Maybe Drag
+    , axisLock : Axis
+    , settings : RequestParams
+    , error : Maybe String
     }
 
 
@@ -69,14 +83,6 @@ type alias RequestParams =
     { projectId : String
     , label : String
     , token : String
-    }
-
-
-requestParams : RequestParams
-requestParams =
-    { projectId = "111111"
-    , label = "Some label"
-    , token = "my Token"
     }
 
 
@@ -98,8 +104,11 @@ init =
     in
         ( { stories = stories
           , drag = Nothing
+          , axisLock = Y
+          , settings = { projectId = "", label = "", token = "" }
+          , error = Nothing
           }
-        , Http.send StoriesResponse (getStories requestParams)
+        , Cmd.none
         )
 
 
@@ -124,17 +133,6 @@ storyDecoder =
             )
             (Decode.field "name" Decode.string)
             (Decode.field "id" Decode.int)
-
-
-
--- Decode.succeed <|
---     { position =
---         { x = setPosition middleX
---         , y = setPosition middleY
---         }
---     , title = "A story"
---     , id = 2
---     }
 
 
 getStories : RequestParams -> Http.Request (List Story)
@@ -174,6 +172,8 @@ type Msg
     | DragAt Position
     | DragEnd Position
     | StoriesResponse (Result Http.Error (List Story))
+    | Update Fields String
+    | Go
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -202,13 +202,43 @@ update msg model =
                     , Cmd.none
                     )
 
+        Go ->
+            ( model, Http.send StoriesResponse (getStories model.settings) )
+
+        Update ProjectId value ->
+            let
+                settings =
+                    model.settings
+            in
+                ( { model | settings = { settings | projectId = value } }
+                , Cmd.none
+                )
+
+        Update Label value ->
+            let
+                settings =
+                    model.settings
+            in
+                ( { model | settings = { settings | label = value } }
+                , Cmd.none
+                )
+
+        Update Token value ->
+            let
+                settings =
+                    model.settings
+            in
+                ( { model | settings = { settings | token = value } }
+                , Cmd.none
+                )
+
         StoriesResponse result ->
             case result of
                 Err error ->
-                    Debug.crash "we suck"
+                    ( { model | error = Just <| toString error }, Cmd.none )
 
                 Ok stories ->
-                    ( { model | stories = stories }, Cmd.none )
+                    ( { model | stories = stories, error = Nothing }, Cmd.none )
 
 
 updateStoryPosition : Maybe Drag -> Story -> Story
@@ -268,18 +298,34 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    div
-        [ class "board"
-        , style
-            [ ( "width", px board.width )
-            , ( "height", px board.height )
+    if List.isEmpty model.stories then
+        div []
+            [ h1 [] [ text "Enter your Tracker details" ]
+            , Html.form [ onSubmit Go ] <|
+                [ input [ onInput <| Update ProjectId, placeholder "Project Id" ] []
+                , input [ onInput <| Update Label, placeholder "Label" ] []
+                , input [ onInput <| Update Token, placeholder "Token" ] []
+                , input [ type_ "submit", onInput <| Update Token, placeholder "Token" ] []
+                ]
+                    ++ [ h3 [class "error"]
+                            [ text <|
+                                toString (Maybe.withDefault "" model.error)
+                            ]
+                       ]
             ]
-        ]
-    <|
-        [ div [ class "board__axis board__axis--y" ] []
-        , div [ class "board__axis board__axis--x" ] []
-        ]
-            ++ List.map (itemView model.drag) model.stories
+    else
+        div
+            [ class "board"
+            , style
+                [ ( "width", px board.width )
+                , ( "height", px board.height )
+                ]
+            ]
+        <|
+            [ div [ class "board__axis board__axis--y" ] []
+            , div [ class "board__axis board__axis--x" ] []
+            ]
+                ++ List.map (itemView model.drag) model.stories
 
 
 itemView : Maybe Drag -> Story -> Html Msg
