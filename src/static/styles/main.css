@@ -15,7 +15,6 @@ h1 {
 .board {
   position: relative;
   margin: auto;
-  border: 2px solid #777;
 }
 
 .board__axis {
@@ -47,10 +46,12 @@ h1 {
   transition: min-width 500ms;
   overflow: hidden;
   min-width: 0;
+  font-size: 12px;
 }
 
 .item:hover {
-  min-width: 400px;
+  min-width: 450px;
+  background-color: green;
 }
 
 .item--title {
@@ -66,7 +67,7 @@ h1 {
 }
 
 .item--title:hover {
-  min-width: 400px;
+  min-width: 450px;
 }
 
 .axis {
