@@ -173,6 +173,7 @@ type Msg
     | DragEnd Position
     | StoriesResponse (Result Http.Error (List Story))
     | Update Fields String
+    | ChangeAxis Axis
     | Go
 
 
@@ -196,7 +197,7 @@ update msg model =
 
                 Just drag ->
                     ( { model
-                        | stories = List.map (updateStoryPosition model.drag) model.stories
+                        | stories = List.map (updateStoryPosition model.axisLock model.drag) model.stories
                         , drag = Nothing
                       }
                     , Cmd.none
@@ -232,6 +233,9 @@ update msg model =
                 , Cmd.none
                 )
 
+        ChangeAxis axis ->
+            ( { model | axisLock = axis }, Cmd.none )
+
         StoriesResponse result ->
             case result of
                 Err error ->
@@ -241,12 +245,12 @@ update msg model =
                     ( { model | stories = stories, error = Nothing }, Cmd.none )
 
 
-updateStoryPosition : Maybe Drag -> Story -> Story
-updateStoryPosition maybeDrag story =
+updateStoryPosition : Axis -> Maybe Drag -> Story -> Story
+updateStoryPosition axisLock maybeDrag story =
     case maybeDrag of
         Just drag ->
             if drag.id == story.id then
-                { story | position = getPosition maybeDrag story }
+                { story | position = getPosition axisLock maybeDrag story }
             else
                 story
 
@@ -307,32 +311,58 @@ view model =
                 , input [ onInput <| Update Token, placeholder "Token" ] []
                 , input [ type_ "submit", onInput <| Update Token, placeholder "Token" ] []
                 ]
-                    ++ [ h3 [class "error"]
+                    ++ [ h3 [ class "error" ]
                             [ text <|
-                                toString (Maybe.withDefault "" model.error)
+                                (Maybe.withDefault "" model.error)
                             ]
                        ]
             ]
     else
-        div
-            [ class "board"
-            , style
-                [ ( "width", px board.width )
-                , ( "height", px board.height )
+        div [ class "container" ]
+            [ div [ class "axis" ]
+                [ label [ class "axis__label" ]
+                    [ input
+                        [ type_ "radio"
+                        , name "axis"
+                        , class "axis__input"
+                        , onClick <| ChangeAxis Y
+                        , checked <| model.axisLock == Y
+                        ]
+                        []
+                    , text "Prioritize by importance"
+                    ]
+                , label [ class "axis__label" ]
+                    [ input
+                        [ type_ "radio"
+                        , name "axis"
+                        , class "axis__input"
+                        , onClick <| ChangeAxis X
+                        , checked <| model.axisLock == X
+                        ]
+                        []
+                    , text "Prioritize by urgency"
+                    ]
                 ]
+            , div
+                [ class "board"
+                , style
+                    [ ( "width", px board.width )
+                    , ( "height", px board.height )
+                    ]
+                ]
+              <|
+                [ div [ class "board__axis board__axis--y" ] []
+                , div [ class "board__axis board__axis--x" ] []
+                ]
+                    ++ List.map (itemView model.axisLock model.drag) model.stories
             ]
-        <|
-            [ div [ class "board__axis board__axis--y" ] []
-            , div [ class "board__axis board__axis--x" ] []
-            ]
-                ++ List.map (itemView model.drag) model.stories
 
 
-itemView : Maybe Drag -> Story -> Html Msg
-itemView drag story =
+itemView : Axis -> Maybe Drag -> Story -> Html Msg
+itemView axisLock drag story =
     let
         realPosition =
-            getPosition drag story
+            getPosition axisLock drag story
                 |> toPosition
     in
         div
@@ -354,19 +384,34 @@ px number =
     toString number ++ "px"
 
 
-getPosition : Maybe Drag -> Story -> BoundedPosition
-getPosition drag story =
-    case drag of
-        Nothing ->
-            story.position
-
-        Just { id, start, current } ->
-            if id == story.id then
-                BoundedPosition
-                    (Bounded.set ((Bounded.value story.position.x) + current.x - start.x) story.position.x)
-                    (Bounded.set ((Bounded.value story.position.y) + current.y - start.y) story.position.y)
+getPosition : Axis -> Maybe Drag -> Story -> BoundedPosition
+getPosition axisLock drag story =
+    let
+        xAxis { id, start, current } =
+            if axisLock == X then
+                Bounded.set ((Bounded.value story.position.x) + current.x - start.x) story.position.x
             else
+                story.position.x
+
+        yAxis { id, start, current } =
+            if axisLock == Y then
+                Bounded.set ((Bounded.value story.position.y) + current.y - start.y) story.position.y
+            else
+                story.position.y
+    in
+        case drag of
+            Nothing ->
                 story.position
+
+            Just drag ->
+                if drag.id == story.id then
+                    { x =
+                        xAxis drag
+                    , y =
+                        yAxis drag
+                    }
+                else
+                    story.position
 
 
 onMouseDown : Int -> Attribute Msg
