@@ -1,0 +1,11 @@
+body {
+  background: #222;
+}
+
+.board {
+  width: 650px;
+  height: 650px;
+  position: relative;
+  margin: auto;
+  border: 2px solid #eee;
+}

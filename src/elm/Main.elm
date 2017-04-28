@@ -1,63 +1,160 @@
 module Main exposing (..)
+
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing ( onClick )
+import Html.Events exposing (on)
+import Json.Decode as Decode
+import Mouse exposing (Position)
+import Number.Bounded as Bounded exposing (Bounded)
 
--- component import example
-import Components.Hello exposing ( hello )
 
-
--- APP
-main : Program Never Int Msg
+main : Program Never Model Msg
 main =
-  Html.beginnerProgram { model = model, view = view, update = update }
+    Html.program
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        }
+
 
 
 -- MODEL
-type alias Model = Int
 
-model : number
-model = 0
+
+type alias BoundedPosition =
+    { x : Bounded Int
+    , y : Bounded Int
+    }
+
+
+type alias Model =
+    { position : BoundedPosition
+    , drag : Maybe Drag
+    }
+
+
+type alias Drag =
+    { start : Position
+    , current : Position
+    }
+
+
+init : ( Model, Cmd Msg )
+init =
+    ( Model
+        (BoundedPosition
+            (Bounded.between 0 600 |> Bounded.set 200)
+            (Bounded.between 0 600 |> Bounded.set 200)
+        )
+        Nothing
+    , Cmd.none
+    )
+
+
+toPosition : BoundedPosition -> Position
+toPosition bp =
+    Position (Bounded.value bp.x) (Bounded.value bp.y)
+
 
 
 -- UPDATE
-type Msg = NoOp | Increment
 
-update : Msg -> Model -> Model
+
+type Msg
+    = DragStart Position
+    | DragAt Position
+    | DragEnd Position
+
+
+update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-  case msg of
-    NoOp -> model
-    Increment -> model + 1
+    ( updateHelp msg model, Cmd.none )
+
+
+updateHelp : Msg -> Model -> Model
+updateHelp msg ({ position, drag } as model) =
+    case msg of
+        DragStart xy ->
+            Model position (Just (Drag xy xy))
+
+        DragAt xy ->
+            Model position (Maybe.map (\{ start } -> Drag start xy) drag)
+
+        DragEnd _ ->
+            Model (getPosition model) Nothing
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    case model.drag of
+        Nothing ->
+            Sub.none
+
+        Just _ ->
+            Sub.batch [ Mouse.moves DragAt, Mouse.ups DragEnd ]
+
 
 
 -- VIEW
--- Html is defined as: elem [ attribs ][ children ]
--- CSS can be applied via class names or inline style attrib
+
+
+(=>) : a -> a -> ( a, a )
+(=>) =
+    (,)
+
+
 view : Model -> Html Msg
 view model =
-  div [ class "container", style [("margin-top", "30px"), ( "text-align", "center" )] ][    -- inline CSS (literal)
-    div [ class "row" ][
-      div [ class "col-xs-12" ][
-        div [ class "jumbotron" ][
-          img [ src "static/img/elm.jpg", style styles.img ] []                             -- inline CSS (via var)
-          , hello model                                                                     -- ext 'hello' component (takes 'model' as arg)
-          , p [] [ text ( "Elm Webpack Starter" ) ]
-          , button [ class "btn btn-primary btn-lg", onClick Increment ] [                  -- click handler
-            span[ class "glyphicon glyphicon-star" ][]                                      -- glyphicon
-            , span[][ text "FTW!" ]
-          ]
-        ]
-      ]
-    ]
-  ]
+    let
+        realPosition =
+            getPosition model
+                |> toPosition
+    in
+        div [ class "board" ]
+            [ div
+                [ onMouseDown
+                , style
+                    [ "background-color" => "#3C8D2F"
+                    , "cursor" => "move"
+                    , "width" => "50px"
+                    , "height" => "50px"
+                    , "border-radius" => "4px"
+                    , "position" => "absolute"
+                    , "left" => px realPosition.x
+                    , "top" => px realPosition.y
+                    , "color" => "white"
+                    , "display" => "flex"
+                    , "align-items" => "center"
+                    , "justify-content" => "center"
+                    ]
+                ]
+                [ text "Drag Me!"
+                ]
+            ]
 
 
--- CSS STYLES
-styles : { img : List ( String, String ) }
-styles =
-  {
-    img =
-      [ ( "width", "33%" )
-      , ( "border", "4px solid #337AB7")
-      ]
-  }
+px : Int -> String
+px number =
+    toString number ++ "px"
+
+
+getPosition : Model -> BoundedPosition
+getPosition { position, drag } =
+    case drag of
+        Nothing ->
+            position
+
+        Just { start, current } ->
+            BoundedPosition
+                (Bounded.set ((Bounded.value position.x) + current.x - start.x) position.x)
+                (Bounded.set ((Bounded.value position.y) + current.y - start.y) position.y)
+
+
+onMouseDown : Attribute Msg
+onMouseDown =
+    on "mousedown" (Decode.map DragStart Mouse.position)
