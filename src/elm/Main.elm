@@ -8,6 +8,22 @@ import Mouse exposing (Position)
 import Number.Bounded as Bounded exposing (Bounded)
 
 
+type alias Size =
+    { width : Int
+    , height : Int
+    }
+
+
+board : Size
+board =
+    { width = 650, height = 650 }
+
+
+item : Size
+item =
+    { width = 90, height = 30 }
+
+
 main : Program Never Model Msg
 main =
     Html.program
@@ -42,14 +58,21 @@ type alias Drag =
 
 init : ( Model, Cmd Msg )
 init =
-    ( Model
-        (BoundedPosition
-            (Bounded.between 0 600 |> Bounded.set 200)
-            (Bounded.between 0 600 |> Bounded.set 200)
+    let
+        middleX =
+            (board.width - item.width) // 2
+
+        middleY =
+            (board.height - item.height) // 2
+    in
+        ( Model
+            (BoundedPosition
+                (Bounded.between 0 (board.width - item.width) |> Bounded.set middleX)
+                (Bounded.between 0 (board.height - item.height) |> Bounded.set middleY)
+            )
+            Nothing
+        , Cmd.none
         )
-        Nothing
-    , Cmd.none
-    )
 
 
 toPosition : BoundedPosition -> Position
@@ -103,11 +126,6 @@ subscriptions model =
 -- VIEW
 
 
-(=>) : a -> a -> ( a, a )
-(=>) =
-    (,)
-
-
 view : Model -> Html Msg
 view model =
     let
@@ -115,25 +133,26 @@ view model =
             getPosition model
                 |> toPosition
     in
-        div [ class "board" ]
-            [ div
-                [ onMouseDown
+        div
+            [ class "board"
+            , style
+                [ ( "width", px board.width )
+                , ( "height", px board.height )
+                ]
+            ]
+            [ div [ class "board__axis board__axis--y" ] []
+            , div [ class "board__axis board__axis--x" ] []
+            , div
+                [ class "item"
+                , onMouseDown
                 , style
-                    [ "background-color" => "#3C8D2F"
-                    , "cursor" => "move"
-                    , "width" => "50px"
-                    , "height" => "50px"
-                    , "border-radius" => "4px"
-                    , "position" => "absolute"
-                    , "left" => px realPosition.x
-                    , "top" => px realPosition.y
-                    , "color" => "white"
-                    , "display" => "flex"
-                    , "align-items" => "center"
-                    , "justify-content" => "center"
+                    [ ( "left", px realPosition.x )
+                    , ( "top", px realPosition.y )
+                    , ( "width", px item.width )
+                    , ( "height", px item.height )
                     ]
                 ]
-                [ text "Drag Me!"
+                [ span [ class "item--title" ] [ text <| "User can drag stories around on a 2x2." ]
                 ]
             ]
 
