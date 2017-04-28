@@ -44,16 +44,29 @@ type alias BoundedPosition =
     }
 
 
-type alias Model =
+type alias Story =
     { position : BoundedPosition
+    , title : String
+    , id : Int
+    }
+
+
+type alias Model =
+    { stories : List Story
     , drag : Maybe Drag
     }
 
 
 type alias Drag =
-    { start : Position
+    { id : Int
+    , start : Position
     , current : Position
     }
+
+
+storyTitles : List String
+storyTitles =
+    [ "axis names", "backend in elixir", "ssetup posgressetup posgressetup posgressetup posgressetup posgresetup posgres", "setup authoriziation" ]
 
 
 init : ( Model, Cmd Msg )
@@ -64,13 +77,28 @@ init =
 
         middleY =
             (board.height - item.height) // 2
+
+        setPosition position =
+            Bounded.between 0 (board.width - item.width)
+                |> Bounded.set position
+
+        stories =
+            storyTitles
+                |> List.indexedMap
+                    (\index title ->
+                        ({ position =
+                            { x = setPosition middleX
+                            , y = setPosition middleY
+                            }
+                         , title = title
+                         , id = index
+                         }
+                        )
+                    )
     in
-        ( Model
-            (BoundedPosition
-                (Bounded.between 0 (board.width - item.width) |> Bounded.set middleX)
-                (Bounded.between 0 (board.height - item.height) |> Bounded.set middleY)
-            )
-            Nothing
+        ( { stories = stories
+          , drag = Nothing
+          }
         , Cmd.none
         )
 
@@ -85,27 +113,73 @@ toPosition bp =
 
 
 type Msg
-    = DragStart Position
+    = DragStart Int Position
     | DragAt Position
     | DragEnd Position
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    ( updateHelp msg model, Cmd.none )
-
-
-updateHelp : Msg -> Model -> Model
-updateHelp msg ({ position, drag } as model) =
     case msg of
-        DragStart xy ->
-            Model position (Just (Drag xy xy))
+        DragStart _ _ ->
+            ( { model | drag = updateDrag msg model.drag }
+            , Cmd.none
+            )
 
-        DragAt xy ->
-            Model position (Maybe.map (\{ start } -> Drag start xy) drag)
+        DragAt _ ->
+            ( { model | drag = updateDrag msg model.drag }
+            , Cmd.none
+            )
 
         DragEnd _ ->
-            Model (getPosition model) Nothing
+            case model.drag of
+                Nothing ->
+                    ( model, Cmd.none )
+
+                Just drag ->
+                    ( { model
+                        | stories = List.map (updateStoryPosition model.drag) model.stories
+                        , drag = Nothing
+                      }
+                    , Cmd.none
+                    )
+
+
+updateStoryPosition : Maybe Drag -> Story -> Story
+updateStoryPosition maybeDrag story =
+    case maybeDrag of
+        Just drag ->
+            if drag.id == story.id then
+                { story | position = getPosition maybeDrag story }
+            else
+                story
+
+        _ ->
+            story
+
+
+updateDrag : Msg -> Maybe Drag -> Maybe Drag
+updateDrag msg drag =
+    case msg of
+        DragStart id xy ->
+            Just
+                { id = id
+                , start = xy
+                , current = xy
+                }
+
+        DragAt xy ->
+            Maybe.map
+                (\drag ->
+                    { drag
+                        | start = drag.start
+                        , current = xy
+                    }
+                )
+                drag
+
+        _ ->
+            drag
 
 
 
@@ -128,32 +202,38 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
+    div
+        [ class "board"
+        , style
+            [ ( "width", px board.width )
+            , ( "height", px board.height )
+            ]
+        ]
+    <|
+        [ div [ class "board__axis board__axis--y" ] []
+        , div [ class "board__axis board__axis--x" ] []
+        ]
+            ++ List.map (itemView model.drag) model.stories
+
+
+itemView : Maybe Drag -> Story -> Html Msg
+itemView drag story =
     let
         realPosition =
-            getPosition model
+            getPosition drag story
                 |> toPosition
     in
         div
-            [ class "board"
+            [ class "item"
+            , onMouseDown story.id
             , style
-                [ ( "width", px board.width )
-                , ( "height", px board.height )
+                [ ( "left", px realPosition.x )
+                , ( "top", px realPosition.y )
+                , ( "width", px item.width )
+                , ( "height", px item.height )
                 ]
             ]
-            [ div [ class "board__axis board__axis--y" ] []
-            , div [ class "board__axis board__axis--x" ] []
-            , div
-                [ class "item"
-                , onMouseDown
-                , style
-                    [ ( "left", px realPosition.x )
-                    , ( "top", px realPosition.y )
-                    , ( "width", px item.width )
-                    , ( "height", px item.height )
-                    ]
-                ]
-                [ span [ class "item--title" ] [ text <| "User can drag stories around on a 2x2." ]
-                ]
+            [ span [ class "item--title" ] [ text <| story.title ]
             ]
 
 
@@ -162,18 +242,21 @@ px number =
     toString number ++ "px"
 
 
-getPosition : Model -> BoundedPosition
-getPosition { position, drag } =
+getPosition : Maybe Drag -> Story -> BoundedPosition
+getPosition drag story =
     case drag of
         Nothing ->
-            position
+            story.position
 
-        Just { start, current } ->
-            BoundedPosition
-                (Bounded.set ((Bounded.value position.x) + current.x - start.x) position.x)
-                (Bounded.set ((Bounded.value position.y) + current.y - start.y) position.y)
+        Just { id, start, current } ->
+            if id == story.id then
+                BoundedPosition
+                    (Bounded.set ((Bounded.value story.position.x) + current.x - start.x) story.position.x)
+                    (Bounded.set ((Bounded.value story.position.y) + current.y - start.y) story.position.y)
+            else
+                story.position
 
 
-onMouseDown : Attribute Msg
-onMouseDown =
-    on "mousedown" (Decode.map DragStart Mouse.position)
+onMouseDown : Int -> Attribute Msg
+onMouseDown id =
+    on "mousedown" (Decode.map (DragStart id) Mouse.position)
