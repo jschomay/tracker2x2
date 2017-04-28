@@ -6,6 +6,7 @@ import Html.Events exposing (on)
 import Json.Decode as Decode
 import Mouse exposing (Position)
 import Number.Bounded as Bounded exposing (Bounded)
+import Http
 
 
 type alias Size =
@@ -64,9 +65,19 @@ type alias Drag =
     }
 
 
-storyTitles : List String
-storyTitles =
-    [ "axis names", "backend in elixir", "ssetup posgressetup posgressetup posgressetup posgressetup posgresetup posgres", "setup authoriziation" ]
+type alias RequestParams =
+    { projectId : String
+    , label : String
+    , token : String
+    }
+
+
+requestParams : RequestParams
+requestParams =
+    { projectId = "111111"
+    , label = "Some label"
+    , token = "my Token"
+    }
 
 
 init : ( Model, Cmd Msg )
@@ -83,24 +94,70 @@ init =
                 |> Bounded.set position
 
         stories =
-            storyTitles
-                |> List.indexedMap
-                    (\index title ->
-                        ({ position =
-                            { x = setPosition middleX
-                            , y = setPosition middleY
-                            }
-                         , title = title
-                         , id = index
-                         }
-                        )
-                    )
+            []
     in
         ( { stories = stories
           , drag = Nothing
           }
-        , Cmd.none
+        , Http.send StoriesResponse (getStories requestParams)
         )
+
+
+storyDecoder : Decode.Decoder Story
+storyDecoder =
+    let
+        middleX =
+            (board.width - item.width) // 2
+
+        middleY =
+            (board.height - item.height) // 2
+
+        setPosition position itemSize =
+            Bounded.between 0 (board.width - itemSize)
+                |> Bounded.set position
+    in
+        Decode.map2
+            (Story
+                { x = setPosition middleX item.width
+                , y = setPosition middleY item.height
+                }
+            )
+            (Decode.field "name" Decode.string)
+            (Decode.field "id" Decode.int)
+
+
+
+-- Decode.succeed <|
+--     { position =
+--         { x = setPosition middleX
+--         , y = setPosition middleY
+--         }
+--     , title = "A story"
+--     , id = 2
+--     }
+
+
+getStories : RequestParams -> Http.Request (List Story)
+getStories { projectId, label, token } =
+    let
+        storiesUrl =
+            "https://www.pivotaltracker.com/services/v5/projects/" ++ projectId ++ "/stories?with_label=" ++ label
+
+        storiesDecoder =
+            (Decode.list storyDecoder)
+    in
+        Http.request
+            { method = "GET"
+            , headers =
+                [ Http.header "Content-Type" "application/json"
+                , Http.header "X-TrackerToken" token
+                ]
+            , url = storiesUrl
+            , body = Http.emptyBody
+            , expect = Http.expectJson storiesDecoder
+            , timeout = Nothing
+            , withCredentials = False
+            }
 
 
 toPosition : BoundedPosition -> Position
@@ -116,6 +173,7 @@ type Msg
     = DragStart Int Position
     | DragAt Position
     | DragEnd Position
+    | StoriesResponse (Result Http.Error (List Story))
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -143,6 +201,14 @@ update msg model =
                       }
                     , Cmd.none
                     )
+
+        StoriesResponse result ->
+            case result of
+                Err error ->
+                    Debug.crash "we suck"
+
+                Ok stories ->
+                    ( { model | stories = stories }, Cmd.none )
 
 
 updateStoryPosition : Maybe Drag -> Story -> Story

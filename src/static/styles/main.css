@@ -40,14 +40,14 @@ body {
 }
 
 .item:hover {
-  min-width: 300px;
+  min-width: 400px;
 }
 
 .item--title {
   font-family: 'San Francisco', Helvetica, Arial, san-serif;
   color: #eee;
   padding: 5px 10px;
-  min-width: 300px;
+  min-width: 400px;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: min-width 500ms;
@@ -56,5 +56,5 @@ body {
 }
 
 .item--title:hover {
-  min-width: 300px;
+  min-width: 400px;
 }
