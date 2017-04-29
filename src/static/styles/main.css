@@ -33,10 +33,46 @@ h1 {
   height: 100%;
 }
 
+.board__axis--y:before {
+  content: "More important";
+  position: absolute;
+  top: 0;
+  left: 5px;
+  color: #777;;
+  white-space: nowrap
+}
+
+.board__axis--y:after {
+  content: "Less important";
+  position: absolute;
+  bottom: 0;
+  left: 5px;
+  color: #777;
+  white-space: nowrap;
+}
+
 .board__axis--x {
   top: 50%;
   width: 100%;
   height: 0;
+}
+
+.board__axis--x:before {
+  content: "More urgent";
+  position: absolute;
+  bottom: 5px;
+  left: 0;
+  color: #777;;
+  white-space: nowrap
+}
+
+.board__axis--x:after {
+  content: "Less urgent";
+  position: absolute;
+  bottom: 5px;
+  right: 0;
+  color: #777;
+  white-space: nowrap;
 }
 
 .item {
