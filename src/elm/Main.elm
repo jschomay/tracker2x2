@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import Html exposing (..)
+import Markdown exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Json.Decode as Decode
@@ -48,6 +49,7 @@ type alias BoundedPosition =
 type alias Story =
     { position : BoundedPosition
     , title : String
+    , description : Maybe String
     , id : Int
     }
 
@@ -69,6 +71,7 @@ type alias Model =
     , axisLock : Axis
     , settings : RequestParams
     , error : Maybe String
+    , focusedStory : Maybe Story
     }
 
 
@@ -107,6 +110,7 @@ init =
           , axisLock = Y
           , settings = { projectId = "", label = "", token = "" }
           , error = Nothing
+          , focusedStory = Nothing
           }
         , Cmd.none
         )
@@ -125,13 +129,14 @@ storyDecoder =
             Bounded.between 0 (board.width - itemSize)
                 |> Bounded.set position
     in
-        Decode.map2
+        Decode.map3
             (Story
                 { x = setPosition middleX item.width
                 , y = setPosition middleY item.height
                 }
             )
             (Decode.field "name" Decode.string)
+            (Decode.maybe <| Decode.field "description" Decode.string)
             (Decode.field "id" Decode.int)
 
 
@@ -139,7 +144,7 @@ getStories : RequestParams -> Http.Request (List Story)
 getStories { projectId, label, token } =
     let
         storiesUrl =
-            "https://www.pivotaltracker.com/services/v5/projects/" ++ projectId ++ "/stories?with_label=" ++ label
+            "https://www.pivotaltracker.com/services/v5/projects/" ++ projectId ++ "/stories?with_label=" ++ label ++ "&fields=name,description"
 
         storiesDecoder =
             (Decode.list storyDecoder)
@@ -171,6 +176,8 @@ type Msg
     = DragStart Int Position
     | DragAt Position
     | DragEnd Position
+    | MouseEnter Int
+    | MouseLeave Int
     | StoriesResponse (Result Http.Error (List Story))
     | Update Fields String
     | ChangeAxis Axis
@@ -202,6 +209,17 @@ update msg model =
                       }
                     , Cmd.none
                     )
+
+        MouseEnter id ->
+            ( { model
+                | focusedStory =
+                    List.head (List.filter (.id >> (==) id) model.stories)
+              }
+            , Cmd.none
+            )
+
+        MouseLeave id ->
+            ( { model | focusedStory = Nothing }, Cmd.none )
 
         Go ->
             ( model, Http.send StoriesResponse (getStories model.settings) )
@@ -319,30 +337,45 @@ view model =
             ]
     else
         div [ class "container" ]
-            [ div [ class "axis" ]
-                [ label [ class "axis__label" ]
-                    [ input
-                        [ type_ "radio"
-                        , name "axis"
-                        , class "axis__input"
-                        , onClick <| ChangeAxis Y
-                        , checked <| model.axisLock == Y
+            [ div [ class "info" ] <|
+                [ h2 [] [ text "Tracker 2x2" ]
+                , h3 [] [ text model.settings.label ]
+                , div [ class "axis" ]
+                    [ label [ class "axis__label" ]
+                        [ input
+                            [ type_ "radio"
+                            , name "axis"
+                            , class "axis__input"
+                            , onClick <| ChangeAxis Y
+                            , checked <| model.axisLock == Y
+                            ]
+                            []
+                        , text "Prioritize by importance"
                         ]
-                        []
-                    , text "Prioritize by importance"
-                    ]
-                , label [ class "axis__label" ]
-                    [ input
-                        [ type_ "radio"
-                        , name "axis"
-                        , class "axis__input"
-                        , onClick <| ChangeAxis X
-                        , checked <| model.axisLock == X
+                    , label [ class "axis__label" ]
+                        [ input
+                            [ type_ "radio"
+                            , name "axis"
+                            , class "axis__input"
+                            , onClick <| ChangeAxis X
+                            , checked <| model.axisLock == X
+                            ]
+                            []
+                        , text "Prioritize by urgency"
                         ]
-                        []
-                    , text "Prioritize by urgency"
                     ]
                 ]
+                    ++ (Maybe.map
+                            (\story ->
+                                [ div [ class "story_details" ]
+                                    [ h4 [ class "story_details__title" ] [ text story.title ]
+                                    , toHtml [ class "story_details__description" ] (Maybe.withDefault "(no description)" story.description)
+                                    ]
+                                ]
+                            )
+                            model.focusedStory
+                            |> Maybe.withDefault [ div [ class "story_details story_details--empty" ] [] ]
+                       )
             , div
                 [ class "board"
                 , style
@@ -368,15 +401,15 @@ itemView axisLock drag story =
         div
             [ class "item"
             , onMouseDown story.id
+            , onMouseEnter story.id
+            , onMouseLeave story.id
             , style
                 [ ( "left", px realPosition.x )
                 , ( "top", px realPosition.y )
                 , ( "width", px item.width )
-                , ( "height", px item.height )
                 ]
             ]
-            [ span [ class "item--title" ] [ text <| story.title ]
-            ]
+            [ text <| "#" ++ toString story.id ]
 
 
 px : Int -> String
@@ -417,3 +450,13 @@ getPosition axisLock drag story =
 onMouseDown : Int -> Attribute Msg
 onMouseDown id =
     on "mousedown" (Decode.map (DragStart id) Mouse.position)
+
+
+onMouseEnter : Int -> Attribute Msg
+onMouseEnter id =
+    on "mouseenter" <| Decode.succeed (MouseEnter id)
+
+
+onMouseLeave : Int -> Attribute Msg
+onMouseLeave id =
+    on "mouseleave" <| Decode.succeed (MouseLeave id)
